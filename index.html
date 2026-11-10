@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verificador de Empresas y Monitoreo de Riesgo</title>
+<style>
+:root{--bg:#f4f6fb;--cd:#fff;--tx:#151826;--mu:#667086;--bd:#e2e6f0;--ac:#4f46e5;--hi:#e5484d;--me:#e69a0a;--lo:#2b9a66;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1017;--cd:#171a24;--tx:#e8ebf4;--mu:#97a0b9;--bd:#2a3042;--ac:#8b93ff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1017;--cd:#171a24;--tx:#e8ebf4;--mu:#97a0b9;--bd:#2a3042;--ac:#8b93ff;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1200px;margin:auto;padding:16px}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+h1{font-size:clamp(20px,3vw,28px);margin:0}h2{font-size:17px;margin:0 0 10px}h3{font-size:14px;margin:0 0 6px}
+.sub{color:var(--mu);font-size:13px}
+.btn,select,input{font:inherit;color:var(--tx);background:var(--cd);border:1px solid var(--bd);border-radius:8px;padding:7px 10px}
+.btn{cursor:pointer}.btn.p{background:var(--ac);border-color:var(--ac);color:#fff}.btn:hover{filter:brightness(.95)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+.card{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:14px}
+.kpi b{display:block;font-size:24px}.kpi span{color:var(--mu);font-size:12px}
+nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px}
+nav a{white-space:nowrap;padding:7px 12px;border-radius:999px;border:1px solid var(--bd);background:var(--cd);color:var(--tx);text-decoration:none;font-size:14px}
+nav a.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center}
+.tw{overflow-x:auto;border:1px solid var(--bd);border-radius:10px;background:var(--cd)}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
+th{color:var(--mu);font-weight:600;position:sticky;top:0;background:var(--cd)}td.r{text-align:right}
+td select,td input{padding:3px 6px;font-size:13px}
+.bd{padding:2px 8px;border-radius:99px;font-size:12px;color:#fff}
+.Alto{background:var(--hi)}.Medio{background:var(--me)}.Bajo{background:var(--lo)}
+.meter{display:inline-block;width:60px;height:6px;background:var(--bd);border-radius:9px;vertical-align:middle;margin-right:6px}.meter i{display:block;height:100%;border-radius:9px;background:var(--ac)}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}.flow .card{flex:1;min-width:150px}
+.msg{padding:8px 12px;border-radius:10px;margin:6px 0;max-width:90%}.msg.user{background:var(--ac);color:#fff;margin-left:auto}.msg.assistant{background:var(--bd)}
+ul{margin:6px 0;padding-left:20px}svg{width:100%;height:auto;display:block}svg text{fill:var(--mu);font-size:11px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 16px;border-radius:9px;opacity:0;transition:.3s;pointer-events:none}#toast.on{opacity:1}
+footer{color:var(--mu);font-size:12px;margin:20px 0}
+</style></head><body><main>
+<header><div><h1>🛡️ Verificador de Empresas y Monitoreo de Riesgo</h1>
+<div class="sub">Pipeline ETL automatizado + dashboard en tiempo real · próximo auto-refresco en <b id="cd">5:00</b></div></div>
+<div class="bar"><button class="btn p" onclick="runEtl()">🔄 Ejecutar ETL</button><button class="btn" onclick="dl()">⬇️ CSV</button><button class="btn" onclick="theme()">🌓</button><button class="btn" onclick="reset()">♻️ Reiniciar</button></div></header>
+<div class="kpis" id="kpis"></div><nav id="nav"></nav><section id="view"></section>
+<footer>Demo autónoma: las tres tablas relacionales (entidades, solicitudes, logs) viven en este navegador y se guardan localmente. La versión de producción usa PostgreSQL en Supabase con el mismo modelo, consulta el registro mercantil (RUES) en vivo Aquí los datos de empresas son simulados. Resultados informativos: no constituyen asesoría financiera.</footer>
+<div id="toast"></div></main>
+<script>
+const R=['Alto','Medio','Bajo'],ES=['Pendiente','En revisión','Aprobada','Rechazada'],
+SEC=['Comercio','Manufactura','Servicios financieros','Tecnología','Construcción','Agroindustria','Energía','Transporte'],
+HI=35e6,ME=15e6,risk=a=>a>HI?'Alto':a>ME?'Medio':'Bajo',cop=v=>'$'+Math.round(v).toLocaleString('es-CO'),
+esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
+$=id=>document.getElementById(id),opts=(a,v)=>a.map(x=>`<option${x===v?' selected':''}>${x}</option>`).join('');
+let seed=Date.now()%1e9;const rnd=()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+let S,F={r:'',s:'',e:'',q:'',ai:false,max:60e6},tab='verificador',left=300,CH=[];
+const KEY='fraude_v3';
+const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}};
+// ---- Verificador: reglas transparentes (mismas del código Python de producción) ----
+function evalCo(e){const A=S.apps.filter(a=>a.tax===e.tax),n=A.length,tot=A.reduce((s,a)=>s+a.amt,0),yrs=e.since?(Date.now()-e.since)/(365.25*864e5):null,F=[],fl=[];
+ F.push(['Antigüedad en el mercado',yrs==null?10:yrs<1?5:yrs<2?15:yrs<5?25:yrs<10?31:35,35,yrs==null?'Sin fecha de matrícula':`${yrs.toFixed(1)} años (matrícula desde ${new Date(e.since).getFullYear()})`]);
+ if(yrs==null)fl.push('❓ No aparece fecha de creación en el registro.');else if(yrs<1)fl.push('🆕 Empresa con menos de 1 año: sin historial suficiente.');else if(yrs<2)fl.push('🌱 Empresa joven (menos de 2 años).');
+ const dead=e.reg==='CANCELADA';F.push(['Estado del registro',dead?0:e.reg?15:5,15,e.reg?'Matrícula '+e.reg.toLowerCase():'Sin dato']);if(dead)fl.push('⛔ La matrícula mercantil no está activa.');
+ F.push(['Historial de contratos',n==0?0:n<3?10:n<10?18:25,25,n+' contratos registrados']);if(!n)fl.push('📭 Sin contratos registrados: no hay historial verificable.');
+ F.push(['Saldos pendientes de pago',7,15,'Sin dato en la demo']);
+ const man=e.bl&&e.manual;F.push(['Alertas internas',man?0:e.bl?5:10,10,man?'Lista negra por decisión del analista':e.bl?'Marcada por contrato de monto alto':'Sin alertas']);if(man)fl.push('🚫 En lista negra (decisión manual).');
+ const sc=F.reduce((s,f)=>s+f[1],0);let d=sc>=70?'Aprobar':sc>=50?'Revisar':'No recomendado';
+ if(dead||man)d='No recomendado';else if(yrs!=null&&yrs<1&&d==='Aprobar')d='Revisar';
+ const lim=d==='No recomendado'?0:Math.round((tot>0?.15*tot*(sc/100)**2:Math.min(2e7,2e6*(yrs||0))*sc/100)/1e5)*1e5;
+ return{sc,d,lim,yrs,F,fl}}
+const dcls=d=>d==='Aprobar'?'Bajo':d==='Revisar'?'Medio':'Alto',findE=q=>Object.values(S.ents).find(x=>x.tax.replace(/\D/g,'')===q);
+function verif(){const q=$('vn').value.replace(/\D/g,'');if(q.length<5)return toast('Escribe un NIT válido');
+ const e=findE(q);if(!e){$('vr').innerHTML='<div class="card" style="margin-top:12px">NIT no encontrado en esta demo. La versión conectada consulta el registro mercantil (RUES) en vivo para cualquier empresa de Colombia.</div>';return}
+ const r=evalCo(e);
+ $('vr').innerHTML=`<div class="card" style="margin-top:12px"><h2>${esc(e.name)} <span class="bd ${dcls(r.d)}">${r.d}</span></h2><div class="kpis">
+<div class="card kpi"><span>Puntaje</span><b>${r.sc}/100</b></div><div class="card kpi"><span>Cupo sugerido</span><b>${cop(r.lim)}</b></div>
+<div class="card kpi"><span>Antigüedad</span><b>${r.yrs==null?'N/D':r.yrs.toFixed(1)+' años'}</b></div><div class="card kpi"><span>Registro</span><b>${e.reg||'N/D'}</b></div></div>
+<div class="tw"><table><tr><th>Factor<th>Puntos<th>Detalle</tr>${r.F.map(f=>`<tr><td>${f[0]}<td>${f[1]}/${f[2]}<td>${esc(f[3])}</tr>`).join('')}</table></div>
+<ul>${r.fl.map(x=>`<li>${x}</li>`).join('')}</ul><p class="sub">Informativo, con datos de demostración. No constituye asesoría financiera ni reemplaza el análisis del prestamista.</p></div>`}
+const bulkBox=()=>`<div class="card" style="margin-top:12px"><h2>📦 Verificación masiva</h2>
+<textarea id="bn" rows="4" style="width:100%;font:inherit;color:var(--tx);background:var(--cd);border:1px solid var(--bd);border-radius:8px;padding:8px" placeholder="Un NIT por línea (máx. 500)"></textarea><div class="bar"><button class="btn p" onclick="bulk()">Verificar lote</button></div><div id="br"></div></div>`;
+function bulk(){const L=[...new Set($('bn').value.split(/\n/).map(x=>x.replace(/\D/g,'')).filter(Boolean))].slice(0,500);
+ const R_=L.map(q=>{const e=findE(q);if(!e)return{nit:q,emp:'(no encontrado)',yrs:'',sc:'',d:'',lim:''};const r=evalCo(e);return{nit:e.tax,emp:e.name,yrs:r.yrs==null?'':r.yrs.toFixed(1),sc:r.sc,d:r.d,lim:r.lim}});
+window._br=R_;$('br').innerHTML=`<div class="tw"><table><tr><th>NIT<th>Empresa<th>Años<th>Puntaje<th>Decisión<th>Cupo</tr>${R_.map(r=>`<tr><td>${r.nit}<td>${esc(r.emp)}<td>${r.yrs}<td>${r.sc}<td>${r.d}<td class="r">${r.lim===''?'':cop(r.lim)}</tr>`).join('')}</table></div><button class="btn" onclick="csvOut()">⬇️ Descargar CSV</button>`}
+async function csvOut(){const d=await window.claude?.use?.('downloads'),csv=['nit,empresa,anios,puntaje,decision,cupo',...(window._br||[]).map(r=>[r.nit,r.emp,r.yrs,r.sc,r.d,r.lim].map(c=>`"${c}"`).join(','))].join('\n');
+ if(d)try{await d.save({filename:'verificacion_lote.csv',data:csv})}catch(e){}else{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='verificacion_lote.csv';a.click()}}
+function pipe(){const l=S.logs[0],raw=l.raw??l.records;return`<h2>🔁 Pipeline de datos (última ejecución · simulado)</h2><div class="kpis">${[['1 · Extract',`9 fuentes · ${raw} filas`],['2 · Transform',`${l.records} limpias · ${raw-l.records} descartadas`],['3 · Load',`${l.records} en la base`],['4 · Visualize',`${S.apps.length} solicitudes + IA`],['5 · Publish',fd(l.ts)]].map(([a,b])=>`<div class="card kpi"><span>${a}</span><b style="font-size:15px">${b}</b></div>`).join('')}</div>`}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function init(){try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+ if(!S){S={ents:{},apps:[],logs:[],nid:1};for(let i=0;i<60;i++){const t=`NIT-800${String(i).padStart(3,'0')}-9`;S.ents[t]={tax:t,name:`Empresa Solicitante ${i+1} S.A.S.`,sector:SEC[i%8],bl:false,reason:'',manual:false,since:Date.now()-(0.3+rnd()*18)*365.25*864e5,reg:rnd()<.08?'CANCELADA':'ACTIVA'}}
+ etl(300,'carga inicial',14);}}
+// ---- ETL: extrae -> transforma (reglas de riesgo) -> carga ----
+function etl(n,src,days=0){const now=Date.now(),ks=Object.keys(S.ents),hit={};
+ for(let i=0;i<n;i++){const e=S.ents[ks[Math.floor(rnd()*ks.length)]],amt=5e6+Math.pow(rnd(),1.6)*50e6,r=risk(amt);
+  S.apps.push({id:S.nid++,tax:e.tax,amt,risk:r,st:'Pendiente',note:'',date:now-(days?rnd()*days*864e5:0)});
+  hit[e.tax]=hit[e.tax]||r==='Alto'}
+ for(const t in hit){const e=S.ents[t];if(!e.manual){e.bl=hit[t];e.reason=hit[t]?'Solicitud sobre el tope de riesgo (> $35.000.000)':''}}
+ const f=Object.keys(hit).filter(t=>S.ents[t].bl).length;
+ S.logs.unshift({id:S.logs.length+1,ts:now,records:n,raw:Math.round(n*1.1),flagged:f,status:'SUCCESS',src});save();return f}
+function runEtl(src='manual'){const f=etl(50,src);left=300;toast(`ETL OK · 50 registros · ${f} alertas`);draw()}
+function reset(){if(confirm('¿Borrar los datos locales y regenerarlos?')){localStorage.removeItem(KEY);init();draw()}}
+// ---- IA local: puntaje de anomalía (z-score global + desvío vs historial de la empresa) ----
+function score(){const A=S.apps,n=A.length||1,m=A.reduce((s,a)=>s+a.amt,0)/n,sd=Math.sqrt(A.reduce((s,a)=>s+(a.amt-m)**2,0)/n)||1,g={};
+ A.forEach(a=>{const e=g[a.tax]=g[a.tax]||{s:0,c:0};e.s+=a.amt;e.c++});
+ A.forEach(a=>{const e=g[a.tax],mu=e.c>1?(e.s-a.amt)/(e.c-1):m;a.raw=Math.abs((a.amt-m)/sd)+Math.abs(Math.log(a.amt/mu))});
+ const mx=Math.max(...A.map(a=>a.raw),1),th=A.map(a=>a.raw).sort((x,y)=>y-x)[Math.floor(n*.05)]??1e9;
+ A.forEach(a=>{a.ai=Math.round(a.raw/mx*100);a.an=a.raw>=th})}
+const nm=a=>S.ents[a.tax]?.name||a.tax,sc=a=>S.ents[a.tax]?.sector||'Sin clasificar',
+cnt=(A,r)=>A.filter(a=>a.risk===r).length,sum=A=>A.reduce((s,a)=>s+a.amt,0),fd=t=>new Date(t).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'});
+function kpis(){const A=S.apps,bl=Object.values(S.ents).filter(e=>e.bl).length;
+ $('kpis').innerHTML=[['Total solicitudes',A.length],['Riesgo Alto 🚨',cnt(A,'Alto')],['Riesgo Medio ⚠️',cnt(A,'Medio')],['Riesgo Bajo ✅',cnt(A,'Bajo')],['Exposición total',cop(sum(A))],['Lista negra ⛔',bl]]
+ .map(([l,v])=>`<div class="card kpi"><span>${l}</span><b>${typeof v==='number'?v.toLocaleString('es-CO'):v}</b></div>`).join('')}
+// ---- gráficos SVG ----
+const cv={Alto:'var(--hi)',Medio:'var(--me)',Bajo:'var(--lo)'};
+function bars(it){const w=400,h=190,mx=Math.max(...it.map(i=>i.v),1),bw=w/it.length;
+ return`<svg viewBox="0 0 ${w} ${h}">${it.map((i,k)=>{const bh=i.v/mx*(h-40);return`<rect x="${k*bw+6}" y="${h-22-bh}" width="${bw-12}" height="${bh}" rx="4" fill="${i.c||'var(--ac)'}"/><text x="${k*bw+bw/2}" y="${h-24-bh}" text-anchor="middle">${i.v}</text><text x="${k*bw+bw/2}" y="${h-6}" text-anchor="middle">${i.l}</text>`}).join('')}</svg>`}
+function stack(A){const rows=SEC.map(s=>({s,c:R.map(r=>A.filter(a=>sc(a)===s&&a.risk===r).length)})),mx=Math.max(...rows.map(r=>r.c.reduce((a,b)=>a+b,0)),1);
+ return`<svg viewBox="0 0 400 ${rows.length*24+6}">${rows.map((r,i)=>{let x=120;return`<text x="0" y="${i*24+16}">${r.s.slice(0,18)}</text>`+r.c.map((v,k)=>{const w=v/mx*270,o=`<rect x="${x}" y="${i*24+4}" width="${w}" height="16" fill="${cv[R[k]]}"/>`;x+=w;return o}).join('')}).join('')}</svg>`}
+function hist(A){const b=Array(11).fill(0);A.forEach(a=>b[Math.min(10,Math.floor((a.amt-5e6)/5e6))]++);
+ return bars(b.map((v,i)=>({l:(5+i*5)+'M',v,c:cv[risk(5e6+i*5e6+1)]})))}
+function days(A){const d=[];for(let i=13;i>=0;i--){const t=new Date();t.setDate(t.getDate()-i);d.push({l:t.getDate()+'/'+(t.getMonth()+1),k:t.toDateString(),v:0})}
+ A.forEach(a=>{const x=d.find(y=>y.k===new Date(a.date).toDateString());if(x)x.v++});return bars(d)}
+// ---- filtros ----
+function filt(){const q=F.q.toLowerCase();return S.apps.filter(a=>(!F.r||a.risk===F.r)&&(!F.s||sc(a)===F.s)&&(!F.e||a.st===F.e)&&a.amt<=F.max&&(!F.ai||a.an)&&(!q||nm(a).toLowerCase().includes(q)||a.tax.toLowerCase().includes(q))).sort((a,b)=>b.date-a.date)}
+function insights(){const A=S.apps,al=A.filter(a=>a.risk==='Alto'),by={};al.forEach(a=>by[sc(a)]=(by[sc(a)]||0)+1);
+ const top=Object.entries(by).sort((a,b)=>b[1]-a[1])[0],w={};al.forEach(a=>w[nm(a)]=(w[nm(a)]||0)+a.amt);const wt=Object.entries(w).sort((a,b)=>b[1]-a[1])[0];
+ return[`<b>${Math.round(al.length/A.length*100)}%</b> de las solicitudes es de riesgo alto y concentra <b>${cop(sum(al))}</b> (${Math.round(sum(al)/sum(A)*100)}% del monto).`,
+ top&&`El sector con más riesgo alto es <b>${top[0]}</b> (${top[1]} solicitudes).`,wt&&`Mayor exposición en riesgo alto: <b>${esc(wt[0])}</b> (${cop(wt[1])}).`,
+ `La IA marcó <b>${A.filter(a=>a.an).length}</b> solicitudes atípicas para revisión manual.`,`Entidades en lista negra: <b>${Object.values(S.ents).filter(e=>e.bl).length}</b> de ${Object.keys(S.ents).length}.`].filter(Boolean)}
+// ---- vistas ----
+const T={
+verificador:['🔎 Verificador',()=>{const E=Object.values(S.ents).sort((a,b)=>b.since-a.since),pk=[E[0],E[E.length-1],E.find(e=>e.reg==='CANCELADA')].filter(Boolean);
+return`<div class="card"><h2>¿Es seguro prestarle a esta empresa?</h2><p class="sub">Antigüedad y estado del registro mercantil, historial de contratos y un puntaje explicable.</p>
+<div class="bar"><input id="vn" style="flex:1;min-width:200px" placeholder="NIT, p. ej. ${pk[0].tax}" onkeydown="if(event.key==='Enter')verif()"><button class="btn p" onclick="verif()">Analizar</button></div>
+<div class="sub">Prueba con: ${pk.map(e=>`<a href="#verificador" onclick="$('vn').value='${e.tax}';verif();return false">${e.tax}</a>`).join(' · ')}</div></div><div id="vr"></div>${bulkBox()}`}],
+resumen:['🏠 Resumen',()=>{const A=S.apps;return`${pipe()}<div class="g2" style="margin-top:12px"><div class="card"><h2>💡 Hallazgos automáticos</h2><ul>${insights().map(i=>`<li>${i}</li>`).join('')}</ul></div>
+<div class="card"><h2>Solicitudes por nivel de riesgo</h2>${bars(R.map(r=>({l:r,v:cnt(A,r),c:cv[r]})))}</div></div>
+<h2 style="margin-top:16px">🚨 Top 10 a revisar primero</h2>${tbl([...A].sort((a,b)=>b.amt-a.amt).slice(0,10))}`}],
+solicitudes:['📊 Solicitudes',()=>`<div class="bar"><input id="q" placeholder="Buscar empresa o NIT" value="${esc(F.q)}" oninput="F.q=this.value;fill()">
+<select onchange="F.r=this.value;fill()"><option value="">Todos los riesgos</option>${opts(R,F.r)}</select>
+<select onchange="F.s=this.value;fill()"><option value="">Todos los sectores</option>${opts(SEC,F.s)}</select>
+<select onchange="F.e=this.value;fill()"><option value="">Todos los estados</option>${opts(ES,F.e)}</select>
+<label class="sub">Monto máx. <input type="range" min="5000000" max="60000000" step="1000000" value="${F.max}" oninput="F.max=+this.value;fill()"></label>
+<label class="sub"><input type="checkbox" ${F.ai?'checked':''} onchange="F.ai=this.checked;fill()"> Solo anomalías IA</label></div>
+<div id="tb"></div>
+<div class="card" style="margin-top:14px"><h2>➕ Nueva solicitud</h2><div class="bar"><input id="nn" list="dl" placeholder="NIT-800123-9"><datalist id="dl">${Object.keys(S.ents).map(t=>`<option>${t}`).join('')}</datalist>
+<input id="nm" placeholder="Razón social"><select id="ns">${opts(SEC)}</select><input id="na" type="number" value="10000000" step="1000000" min="1000000" oninput="pv()"><b id="pv"></b><button class="btn p" onclick="addApp()">Registrar</button></div></div>`,fill],
+entidades:['🏢 Entidades',()=>`<p class="sub">Catálogo editable: lista negra, motivo y sector. Lo que edites queda como decisión manual y el ETL no lo pisa.</p><div class="bar"><input id="eq" placeholder="Buscar entidad" oninput="efill()"><label class="sub"><input type="checkbox" id="eb" onchange="efill()"> Solo lista negra ⛔</label></div><div id="et"></div>`,efill],
+graficos:['📈 Gráficos',()=>{const A=S.apps;return`<div class="g2"><div class="card"><h2>Distribución de riesgo</h2>${bars(R.map(r=>({l:r,v:cnt(A,r),c:cv[r]})))}</div>
+<div class="card"><h2>Riesgo por sector</h2>${stack(A)}</div><div class="card"><h2>Distribución de montos (COP)</h2>${hist(A)}</div><div class="card"><h2>Solicitudes por día</h2>${days(A)}</div></div>`}],
+ia:['🤖 IA',()=>`<div class="g2"><div class="card"><h2>🔎 Detección de anomalías</h2><p class="sub">Puntaje estadístico (z-score del monto + desvío frente al historial de cada empresa). Marca el 5 % más atípico aunque no supere el tope de riesgo.</p></div>
+<div class="card"><h2>💬 Analista IA (Claude)</h2><div id="chat"></div><div class="bar"><button class="btn" onclick="ask('Redacta un informe ejecutivo breve para gerencia: situación de la cartera, 3 riesgos principales y acciones recomendadas.')">📄 Informe ejecutivo</button></div>
+<div class="bar"><input id="ci" style="flex:1" placeholder="¿Qué empresas debo revisar primero?" onkeydown="if(event.key==='Enter')send()"><button class="btn p" onclick="send()">Enviar</button></div></div></div>
+<h2 style="margin-top:16px">Solicitudes más atípicas</h2>${tbl([...S.apps].sort((a,b)=>b.ai-a.ai).slice(0,15))}`,chat],
+logs:['📝 Logs ETL',()=>{const l=S.logs[0];return`<div class="card" style="margin-bottom:12px">Última ejecución: <b>${fd(l.ts)}</b> · estado <span class="bd Bajo">${l.status}</span> · ${l.records} registros · ${l.flagged} alertas · origen: ${l.src}</div>
+<div class="tw"><table><tr><th>#<th>Fecha<th>Registros<th>Alertas<th>Estado<th>Origen</tr>${S.logs.slice(0,40).map(x=>`<tr><td>${x.id}<td>${fd(x.ts)}<td>${x.records}<td>${x.flagged}<td>${x.status}<td>${x.src}</tr>`).join('')}</table></div>`}],
+proyecto:['ℹ️ Proyecto',()=>`<div class="g2"><div class="card"><h2>El problema</h2>Los equipos de riesgo reciben solicitudes de crédito constantemente, pero no tienen un sistema unificado, automático y auditable que les diga, en tiempo real, cuáles amenazan la cartera.</div>
+<div class="card"><h2>Nuestra propuesta</h2>Una plataforma que convierte datos públicos en alertas tempranas: reduce el tiempo de detección, disminuye la exposición y la mora, audita cada ejecución y funciona con herramientas públicas y gratuitas.</div></div>
+<p class="sub">Público: analistas de riesgo y oficiales de cumplimiento · gerentes de riesgo (bancos, fintechs, cooperativas) · directores financieros.</p>
+<h2>Arquitectura</h2><div class="flow">${[['1. Extract','Descarga CSV desde URL pública'],['2. Transform','Limpieza y reglas de riesgo (pandas)'],['3. Load','PostgreSQL (Supabase)'],['4. Visualize','Dashboard web + IA'],['5. Publish','Hosting en la nube + GitHub Actions (cron 06:00 UTC)']].map(([a,b])=>`<div class="card"><h3>${a}</h3><span class="sub">${b}</span></div>`).join('')}</div>
+<h2 style="margin-top:16px">Reglas de riesgo</h2><div class="flow"><div class="card"><span class="bd Alto">Alto</span> monto &gt; $35.000.000 → lista negra</div><div class="card"><span class="bd Medio">Medio</span> $15.000.001 – $35.000.000 → revisión estándar</div><div class="card"><span class="bd Bajo">Bajo</span> ≤ $15.000.000 → aprobación directa</div></div>
+<h2 style="margin-top:16px">5 preguntas de negocio</h2><ol><li>¿Cuál es la exposición total y cómo se distribuye? → KPIs y Resumen</li><li>¿Qué empresas superan el tope? → Solicitudes + filtros</li><li>¿Qué entidades están en lista negra? → Entidades</li><li>¿Cómo reportar a gerencia? → Gráficos</li><li>¿El ETL funciona y cuándo corrió? → Logs ETL</li></ol>
+<h2>Modelo relacional</h2><ul><li><b>corporate_entities</b>: NIT, nombre, sector, lista negra, motivo.</li><li><b>credit_applications</b>: solicitud, monto, riesgo, estado, notas (FK a entidad).</li><li><b>etl_fraud_logs</b>: auditoría de cada ejecución.</li></ul>`]};
+function tbl(A){return`<div class="tw"><table><tr><th>Fecha<th>NIT<th>Empresa<th>Sector<th>Monto<th>Riesgo<th>Estado<th>IA</tr>${A.map(a=>`<tr><td>${fd(a.date)}<td>${a.tax}<td>${esc(nm(a))}<td>${sc(a)}<td class="r">${cop(a.amt)}<td><span class="bd ${a.risk}">${a.risk}</span><td>${a.st}<td><span class="meter"><i style="width:${a.ai}%"></i></span>${a.ai}${a.an?' 🔎':''}</tr>`).join('')}</table></div>`}
+function fill(){const A=filt();$('tb').innerHTML=`<div class="sub" style="margin-bottom:6px">${A.length} solicitudes (se muestran 120)</div><div class="tw"><table><tr><th>Fecha<th>Empresa<th>Sector<th>Monto<th>Riesgo<th>Estado<th>IA<th>Notas</tr>${A.slice(0,120).map(a=>`<tr><td>${fd(a.date)}<td title="${a.tax}">${esc(nm(a))}<td>${sc(a)}<td class="r">${cop(a.amt)}
+<td><select onchange="upd(${a.id},'risk',this.value)">${opts(R,a.risk)}</select><td><select onchange="upd(${a.id},'st',this.value)">${opts(ES,a.st)}</select><td>${a.ai}${a.an?' 🔎':''}<td><input value="${esc(a.note)}" placeholder="Nota…" onchange="upd(${a.id},'note',this.value)"></tr>`).join('')}</table></div>`;pv()}
+function efill(){const q=($('eq')?.value||'').toLowerCase(),b=$('eb')?.checked,c={};S.apps.forEach(a=>{c[a.tax]=c[a.tax]||{n:0,s:0};c[a.tax].n++;c[a.tax].s+=a.amt});
+ $('et').innerHTML=`<div class="tw"><table><tr><th>NIT<th>Empresa<th>Sector<th>Solic.<th>Monto total<th>Lista negra<th>Motivo<th></tr>${Object.values(S.ents).filter(e=>(!b||e.bl)&&(e.name+e.tax).toLowerCase().includes(q)).slice(0,120).map(e=>`<tr><td>${e.tax}<td>${esc(e.name)}<td><select onchange="ent('${e.tax}','sector',this.value)">${opts(SEC,e.sector)}</select>
+<td>${c[e.tax]?.n||0}<td class="r">${cop(c[e.tax]?.s||0)}<td><input type="checkbox" ${e.bl?'checked':''} onchange="ent('${e.tax}','bl',this.checked)"><td><input value="${esc(e.reason)}" onchange="ent('${e.tax}','reason',this.value)"><td>${e.manual?'✋ manual':''}</tr>`).join('')}</table></div>`}
+function upd(id,k,v){const a=S.apps.find(x=>x.id===id);a[k]=v;save();kpis();if(k!=='note')fill()}
+function ent(t,k,v){const e=S.ents[t];e[k]=v;e.manual=true;save();kpis();efill()}
+function pv(){const a=+($('na')?.value||0);if($('pv'))$('pv').innerHTML=`<span class="bd ${risk(a)}">${risk(a)}</span>`}
+function addApp(){const t=$('nn').value.trim(),n=$('nm').value.trim(),a=+$('na').value;if(!t||(!n&&!S.ents[t]))return toast('NIT y razón social son obligatorios');
+ let e=S.ents[t];if(!e)e=S.ents[t]={tax:t,name:n,sector:$('ns').value,bl:false,reason:'',manual:false};else if(e.bl)toast('⛔ Entidad en lista negra: queda para revisión');
+ const r=risk(a);if(r==='Alto'&&!e.manual){e.bl=true;e.reason='Solicitud sobre el tope de riesgo'}
+ S.apps.push({id:S.nid++,tax:t,amt:a,risk:r,st:'Pendiente',note:'',date:Date.now()});save();draw()}
+// ---- IA conversacional (Claude vía capacidad "sample") ----
+function ctx(){const A=S.apps,s=SEC.map(x=>`${x}: ${cop(sum(A.filter(a=>sc(a)===x)))}`).join('; ');
+ return`Reglas: Alto > $35M, Medio > $15M, Bajo resto. Total ${A.length}; Alto ${cnt(A,'Alto')}, Medio ${cnt(A,'Medio')}, Bajo ${cnt(A,'Bajo')}. Exposición ${cop(sum(A))}. Por sector: ${s}. Lista negra: ${Object.values(S.ents).filter(e=>e.bl).length}.\nTop anomalías:\n`+
+ [...A].sort((a,b)=>b.ai-a.ai).slice(0,10).map(a=>`${nm(a)} ${cop(a.amt)} ${a.risk} score ${a.ai}`).join('\n')+`\nÚltimo ETL: ${S.logs[0].records} registros, ${S.logs[0].flagged} alertas.`}
+function chat(){if(!$('chat'))return;$('chat').innerHTML=CH.length?CH.map(m=>`<div class="msg ${m.role}">${esc(m.content).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>')}</div>`).join(''):'<p class="sub">Pregunta en lenguaje natural sobre tu cartera.</p>'}
+function send(){const v=$('ci').value.trim();if(v){$('ci').value='';ask(v)}}
+async function ask(q){const sm=await window.claude?.use?.('sample');if(!sm){CH.push({role:'user',content:q},{role:'assistant',content:localAI(q)});chat();return}
+ CH.push({role:'user',content:q},{role:'assistant',content:'Analizando…'});chat();
+ const m=CH.slice(0,-1).map((x,i)=>i?x:{role:'user',content:`Eres un analista senior de riesgo crediticio. Responde en español, breve, usando solo estos datos; las decisiones finales son humanas.\n\n${ctx()}\n\nPregunta: ${x.content}`});
+ try{await sm(m,{cache:false,onText:({text})=>{CH[CH.length-1].content=text;if(tab==='ia')chat()}})}catch(e){CH[CH.length-1].content='No se pudo consultar la IA ('+(e.code||'error')+').';chat()}}
+// ---- Analista IA local (funciona sin conexión ni API: reglas + estadística sobre tus datos) ----
+const plain=h=>h.replace(/<[^>]+>/g,'');
+function report(){const A=S.apps,al=A.filter(a=>a.risk==='Alto'),by={};al.forEach(a=>by[sc(a)]=(by[sc(a)]||0)+1);const ts=Object.entries(by).sort((a,b)=>b[1]-a[1])[0],an=[...A].sort((a,b)=>b.ai-a.ai).slice(0,3);
+ return`**Informe ejecutivo**\n\n**Situación:** ${A.length} solicitudes por ${cop(sum(A))}. Alto ${cnt(A,'Alto')} · Medio ${cnt(A,'Medio')} · Bajo ${cnt(A,'Bajo')}. El riesgo alto concentra ${Math.round(sum(al)/sum(A)*100)}% del monto.\n\n**3 riesgos principales:**\n1. Concentración en riesgo alto (${cop(sum(al))}).\n2. ${ts?'Sector '+ts[0]+' con '+ts[1]+' solicitudes de riesgo alto.':'Sin sector dominante.'}\n3. ${A.filter(a=>a.an).length} solicitudes atípicas (p. ej. ${an.map(nm).join(', ')}).\n\n**Acciones:** revisar primero las atípicas, validar las entidades en lista negra (${Object.values(S.ents).filter(e=>e.bl).length}) y fijar un límite de exposición por sector.`}
+function localAI(q){const t=q.toLowerCase(),A=S.apps,top=[...A].sort((a,b)=>b.ai-a.ai).slice(0,5),P='🧠 Analista local · ',L=a=>`• ${nm(a)} — ${cop(a.amt)} (${a.risk}, puntaje IA ${a.ai})`;
+ if(/informe|ejecutivo|gerencia/.test(t))return report();
+ if(/revis|primero|prioridad|anomal|at[ií]pic|sospech|fraude/.test(t))return P+'revisa primero estas solicitudes:\n'+top.map(L).join('\n');
+ if(/sector/.test(t)){const r=SEC.map(s=>[s,sum(A.filter(a=>sc(a)===s&&a.risk==='Alto'))]).sort((a,b)=>b[1]-a[1]);return P+'exposición en riesgo alto por sector:\n'+r.slice(0,5).map(x=>`• ${x[0]}: ${cop(x[1])}`).join('\n')}
+ if(/negra|bloque|entidad/.test(t)){const b=Object.values(S.ents).filter(e=>e.bl);return P+`hay ${b.length} entidades en lista negra. Ejemplos:\n`+b.slice(0,5).map(e=>`• ${e.name} (${e.reason||'sin motivo'})`).join('\n')}
+ if(/exposici|monto|total|cu[aá]nto/.test(t))return P+`la exposición total es ${cop(sum(A))}; en riesgo alto ${cop(sum(A.filter(a=>a.risk==='Alto')))}.`;
+ return P+'resumen de hallazgos:\n'+insights().map(i=>'• '+plain(i)).join('\n')+'\n\nPrueba: “informe ejecutivo”, “¿qué reviso primero?”, “riesgo por sector” o “lista negra”.'}
+// ---- utilidades ----
+async function dl(){const d=await window.claude?.use?.('downloads');const rows=[['fecha','nit','empresa','sector','monto','riesgo','estado','ia','notas'],...filt().map(a=>[new Date(a.date).toISOString(),a.tax,nm(a),sc(a),Math.round(a.amt),a.risk,a.st,a.ai,a.note])];
+ const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+ if(d)try{await d.save({filename:'solicitudes.csv',data:csv})}catch(e){}else{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='solicitudes.csv';a.click()}}
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('on');setTimeout(()=>e.classList.remove('on'),2500)}
+function theme(){const r=document.documentElement,d=getComputedStyle(r).colorScheme==='dark';r.dataset.theme=d?'light':'dark'}
+function draw(){tab=T[location.hash.slice(1)]?location.hash.slice(1):'verificador';score();kpis();
+ $('nav').innerHTML=Object.entries(T).map(([k,v])=>`<a href="#${k}" class="${k===tab?'on':''}">${v[0]}</a>`).join('');
+ $('view').innerHTML=T[tab][1]();T[tab][2]?.()}
+addEventListener('hashchange',draw);
+setInterval(()=>{left--;if(left<=0){left=300;etl(20,'auto-refresh');if(!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))draw();else kpis()}
+ $('cd').textContent=Math.floor(left/60)+':'+String(left%60).padStart(2,'0')},1000);
+init();draw();
+</script></body></html>
